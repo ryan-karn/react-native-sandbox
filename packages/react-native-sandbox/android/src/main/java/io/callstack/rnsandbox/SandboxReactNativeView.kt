@@ -60,9 +60,8 @@ class SandboxReactNativeView(
             localEvent.setLocation(offsetX, offsetY)
             child?.dispatchTouchEvent(localEvent)
             localEvent.recycle()
-       }
+        }
     }
-
 
     /**
      * Fabric manages our dimensions but not our children's (they come from a

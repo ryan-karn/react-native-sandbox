@@ -47,7 +47,6 @@ import java.lang.ref.WeakReference
  * `isChildrenDrawingOrderEnabled` methods.
  */
 object SandboxTouchInterceptor {
-
     /** All registered sandbox views, held as weak references to avoid leaks. */
     private val sandboxViews = mutableSetOf<WeakReference<SandboxReactNativeView>>()
 
@@ -138,9 +137,8 @@ object SandboxTouchInterceptor {
      */
     private class SandboxWindowCallback(
         /** The original callback we wrapped. Exposed so [unregister] can restore it. */
-        val delegate: Window.Callback
+        val delegate: Window.Callback,
     ) : Window.Callback by delegate {
-
         /** The sandbox handling the current gesture, or null if no sandbox is involved. */
         private var activeGestureSandbox: WeakReference<SandboxReactNativeView>? = null
 
@@ -172,18 +170,21 @@ object SandboxTouchInterceptor {
                 // Continuation / end of gesture — route same as ACTION_DOWN decided
                 MotionEvent.ACTION_MOVE,
                 MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_CANCEL,
+                -> {
                     val sandbox = activeGestureSandbox?.get()
                     if (sandbox != null) {
-                        val handled = if (activeGestureObscured) {
-                            redispatchWithHiddenSandbox(sandbox, event)
-                        } else {
-                            sandbox.dispatchTouchEventToChild(event)
-                            true
-                        }
+                        val handled =
+                            if (activeGestureObscured) {
+                                redispatchWithHiddenSandbox(sandbox, event)
+                            } else {
+                                sandbox.dispatchTouchEventToChild(event)
+                                true
+                            }
                         // Clean up gesture state when the gesture ends
                         if (event.actionMasked == MotionEvent.ACTION_UP ||
-                            event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                            event.actionMasked == MotionEvent.ACTION_CANCEL
+                        ) {
                             activeGestureSandbox = null
                             activeGestureObscured = false
                         }
@@ -197,7 +198,8 @@ object SandboxTouchInterceptor {
                 // gesture can't switch targets. This is the correct semantic: the gesture
                 // target is locked on the first finger down.
                 MotionEvent.ACTION_POINTER_DOWN,
-                MotionEvent.ACTION_POINTER_UP -> {
+                MotionEvent.ACTION_POINTER_UP,
+                -> {
                     val sandbox = activeGestureSandbox?.get()
                     if (sandbox != null) {
                         return if (activeGestureObscured) {
@@ -242,7 +244,7 @@ object SandboxTouchInterceptor {
          */
         private fun redispatchWithHiddenSandbox(
             sandbox: SandboxReactNativeView,
-            event: MotionEvent
+            event: MotionEvent,
         ): Boolean {
             // Save and hide each child's visibility
             val children = mutableListOf<Pair<View, Int>>()
@@ -275,7 +277,10 @@ object SandboxTouchInterceptor {
      * @return A pair of (sandbox, isObscured), or null if no sandbox contains
      *         the touch point.
      */
-    private fun findSandboxAndObscured(rawX: Float, rawY: Float): Pair<SandboxReactNativeView, Boolean>? {
+    private fun findSandboxAndObscured(
+        rawX: Float,
+        rawY: Float,
+    ): Pair<SandboxReactNativeView, Boolean>? {
         val location = IntArray(2)
         val x = rawX.toInt()
         val y = rawY.toInt()
@@ -285,11 +290,13 @@ object SandboxTouchInterceptor {
             if (!sandbox.isAttachedToWindow || !sandbox.isShown) continue
 
             sandbox.getLocationOnScreen(location)
-            val rect = Rect(
-                location[0], location[1],
-                location[0] + sandbox.width,
-                location[1] + sandbox.height
-            )
+            val rect =
+                Rect(
+                    location[0],
+                    location[1],
+                    location[0] + sandbox.width,
+                    location[1] + sandbox.height,
+                )
             if (!rect.contains(x, y)) continue
 
             return Pair(sandbox, isObscuredAt(sandbox, x, y))
@@ -312,7 +319,11 @@ object SandboxTouchInterceptor {
      * The walk continues up the tree because an obscuring view might be a
      * sibling of a grandparent, not just a direct sibling of the sandbox.
      */
-    private fun isObscuredAt(target: View, screenX: Int, screenY: Int): Boolean {
+    private fun isObscuredAt(
+        target: View,
+        screenX: Int,
+        screenY: Int,
+    ): Boolean {
         var child: View = target
         var parent = child.parent
         val siblingLoc = IntArray(2)
@@ -329,11 +340,13 @@ object SandboxTouchInterceptor {
 
                 // Check the sibling's own bounds
                 sibling.getLocationOnScreen(siblingLoc)
-                val sibRect = Rect(
-                    siblingLoc[0], siblingLoc[1],
-                    siblingLoc[0] + sibling.width,
-                    siblingLoc[1] + sibling.height
-                )
+                val sibRect =
+                    Rect(
+                        siblingLoc[0],
+                        siblingLoc[1],
+                        siblingLoc[0] + sibling.width,
+                        siblingLoc[1] + sibling.height,
+                    )
                 if (sibRect.contains(screenX, screenY)) return true
 
                 // Check descendants — catches overflow (e.g. a card with
@@ -360,18 +373,24 @@ object SandboxTouchInterceptor {
      * React Native view with negative margin or absolute positioning that
      * overflows its container.
      */
-    private fun hasDescendantAt(viewGroup: ViewGroup, screenX: Int, screenY: Int): Boolean {
+    private fun hasDescendantAt(
+        viewGroup: ViewGroup,
+        screenX: Int,
+        screenY: Int,
+    ): Boolean {
         val loc = IntArray(2)
         for (i in 0 until viewGroup.childCount) {
             val child = viewGroup.getChildAt(i)
             if (child.visibility != View.VISIBLE) continue
 
             child.getLocationOnScreen(loc)
-            val childRect = Rect(
-                loc[0], loc[1],
-                loc[0] + child.width,
-                loc[1] + child.height
-            )
+            val childRect =
+                Rect(
+                    loc[0],
+                    loc[1],
+                    loc[0] + child.width,
+                    loc[1] + child.height,
+                )
             if (childRect.contains(screenX, screenY)) return true
             if (child is ViewGroup && hasDescendantAt(child, screenX, screenY)) return true
         }
@@ -390,10 +409,17 @@ object SandboxTouchInterceptor {
      *
      * Falls back to natural index ordering if reflection fails.
      */
-    private fun isDrawnAfter(parent: ViewGroup, candidateIndex: Int, referenceIndex: Int): Boolean {
-        val customOrder = try {
-            isChildrenDrawingOrderEnabledMethod?.invoke(parent) as? Boolean ?: false
-        } catch (_: Exception) { false }
+    private fun isDrawnAfter(
+        parent: ViewGroup,
+        candidateIndex: Int,
+        referenceIndex: Int,
+    ): Boolean {
+        val customOrder =
+            try {
+                isChildrenDrawingOrderEnabledMethod?.invoke(parent) as? Boolean ?: false
+            } catch (_: Exception) {
+                false
+            }
 
         if (!customOrder) return candidateIndex > referenceIndex
 
@@ -451,7 +477,7 @@ object SandboxTouchInterceptor {
                 "SandboxTouchInterceptor",
                 "Reflection on ViewGroup.isChildrenDrawingOrderEnabled() failed — " +
                     "falling back to natural draw order. zIndex-based overlay detection may be inaccurate. " +
-                    "Cause: ${e.message}"
+                    "Cause: ${e.message}",
             )
             null
         }
@@ -459,17 +485,18 @@ object SandboxTouchInterceptor {
 
     private val getChildDrawingOrderMethod by lazy {
         try {
-            ViewGroup::class.java.getDeclaredMethod(
-                "getChildDrawingOrder",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            ).also { it.isAccessible = true }
+            ViewGroup::class.java
+                .getDeclaredMethod(
+                    "getChildDrawingOrder",
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                ).also { it.isAccessible = true }
         } catch (e: Exception) {
             android.util.Log.w(
                 "SandboxTouchInterceptor",
                 "Reflection on ViewGroup.getChildDrawingOrder() failed — " +
                     "falling back to natural draw order. zIndex-based overlay detection may be inaccurate. " +
-                    "Cause: ${e.message}"
+                    "Cause: ${e.message}",
             )
             null
         }
