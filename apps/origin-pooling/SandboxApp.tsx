@@ -1,10 +1,10 @@
 /**
- * SandboxApp — runs INSIDE each sandbox.
+ * SandboxApp — runs INSIDE each sandbox (library approach).
  *
- * Uses globalThis.postMessage directly (broadcast fallback, no per-surface routing).
- * Provides buttons to ping alpha/beta origins and send heartbeats to the host.
- * Displays an internal log of incoming and outgoing messages.
+ * Uses useSurfaceMessaging from @callstack/react-native-sandbox
+ * for per-surface routing.
  */
+import {useSurfaceMessaging} from '@callstack/react-native-sandbox'
 import React, {useEffect, useRef, useState} from 'react'
 import {
   ScrollView,
@@ -14,14 +14,14 @@ import {
   View,
 } from 'react-native'
 
-declare const globalThis: {
-  postMessage: (msg: unknown, targetOrigin?: string) => void
-  setOnMessage: (cb: (msg: unknown) => void) => void
-}
-
 type LogEntry = {dir: 'in' | 'out'; text: string; ts: number}
 
-export default function SandboxApp() {
+type Props = {
+  __sandboxDelegateId?: string
+}
+
+export default function SandboxApp({__sandboxDelegateId}: Props) {
+  const {postMessage, setOnMessage} = useSurfaceMessaging(__sandboxDelegateId)
   const [log, setLog] = useState<LogEntry[]>([])
   const instanceId = useRef(Math.random().toString(36).slice(2, 6)).current
   const seq = useRef(0)
@@ -30,33 +30,32 @@ export default function SandboxApp() {
   const addLog = (dir: 'in' | 'out', text: string) =>
     setLog(prev => [...prev.slice(-19), {dir, text, ts: Date.now()}])
 
-  // Signal first render to host
   useEffect(() => {
-    globalThis.postMessage({type: 'rendered', instanceId})
+    postMessage({type: 'rendered', instanceId})
     addLog('out', `rendered (${instanceId})`)
-  }, [instanceId])
+  }, [instanceId, postMessage])
 
-  // Listen for incoming messages (pings from other origins)
   useEffect(() => {
-    globalThis.setOnMessage((msg: unknown) => {
+    const unsubscribe = setOnMessage((msg: unknown) => {
       const data = msg as Record<string, unknown>
       addLog('in', `from ${data.instanceId ?? '?'}: ${data.type}`)
     })
-  }, [])
+    return unsubscribe
+  }, [setOnMessage])
 
   const sendHeartbeat = () => {
     const s = ++seq.current
-    globalThis.postMessage({type: 'heartbeat', instanceId, seq: s})
+    postMessage({type: 'heartbeat', instanceId, seq: s})
     addLog('out', `heartbeat seq=${s}`)
   }
 
   const pingAlpha = () => {
-    globalThis.postMessage({type: 'ping', instanceId}, 'alpha')
+    postMessage({type: 'ping', instanceId}, 'alpha')
     addLog('out', 'ping → alpha')
   }
 
   const pingBeta = () => {
-    globalThis.postMessage({type: 'ping', instanceId}, 'beta')
+    postMessage({type: 'ping', instanceId}, 'beta')
     addLog('out', 'ping → beta')
   }
 
@@ -70,6 +69,7 @@ export default function SandboxApp() {
   return (
     <View style={styles.root}>
       <Text style={styles.title}>ID: {instanceId}</Text>
+      <Text style={styles.approach}>Library (useSurfaceMessaging)</Text>
       <View style={styles.buttons}>
         <View style={styles.btnRow}>
           <TouchableOpacity style={styles.btnGreen} onPress={sendHeartbeat}>
@@ -106,6 +106,7 @@ export default function SandboxApp() {
 const styles = StyleSheet.create({
   root: {flex: 1, padding: 6, backgroundColor: '#1a1a2e'},
   title: {color: '#d3e945', fontWeight: '700', fontSize: 13},
+  approach: {color: '#888', fontSize: 9, marginBottom: 4},
   buttons: {gap: 4, marginBottom: 4},
   btnRow: {flexDirection: 'row', gap: 4},
   btnGreen: {
